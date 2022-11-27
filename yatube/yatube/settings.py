@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'users',
     'core',
     'about',
+
     'sorl.thumbnail',
 ]
 

@@ -1,8 +1,9 @@
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from posts.models import Group, Post, User
+from posts.models import Comment, Group, Post, User
 
 User = get_user_model()
 
@@ -21,6 +22,19 @@ class PostsFormsTest(TestCase):
             author=cls.author,
             text='Тестовый пост',
             group=cls.group,
+        )
+        cls.small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        cls.uploaded = SimpleUploadedFile(
+            name='small.gif',
+            content=cls.small_gif,
+            content_type='image/gif'
         )
 
     def setUp(self):
@@ -83,3 +97,27 @@ class PostsFormsTest(TestCase):
             data=form_data,
         )
         self.assertEqual(Post.objects.count(), post_count)
+
+    def test_add_comment(self) -> None:
+        '''Проверка формы комментария'''
+        self.comment = Comment.objects.create(
+            text='Тестовый комментарий',
+            post=self.post,
+            author=self.author
+        )
+        self.comments_count = Comment.objects.count()
+        one_more_comment = 1
+        form_data = {
+            'text': 'Тестовый комментарий'
+        }
+        response = self.authorized_client.post(
+            reverse('posts:add_comment', args=[self.post.pk]),
+            data=form_data,
+            follow=True,
+        )
+        self.assertRedirects(
+            response, reverse('posts:post_detail', args=[self.post.pk])
+        )
+        self.assertEqual(
+            Comment.objects.count(), self.comments_count + one_more_comment
+        )

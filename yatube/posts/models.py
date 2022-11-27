@@ -66,7 +66,6 @@ class Comment(models.Model):
         verbose_name='Автор'
     )
     text = models.TextField(
-        max_length=200,
         verbose_name='Текст',
         help_text='Введите текст поста',
     )
@@ -76,26 +75,22 @@ class Comment(models.Model):
         db_index=True
     )
 
-    def __str__(self):
-        return self.text
-
     class Meta:
         verbose_name = 'Коммент'
-        verbose_name_plural = "Комменты"
+        verbose_name_plural = 'Комменты'
+
+    def __str__(self):
+        return self.text(max_length=15)
 
 
 class Follow(models.Model):
     user = models.ForeignKey(
         User,
-        blank=True,
-        null=True,
         on_delete=models.CASCADE,
         related_name='follower',
     )
     author = models.ForeignKey(
         User,
-        blank=True,
-        null=True,
         on_delete=models.CASCADE,
         related_name='following',
     )
@@ -103,6 +98,6 @@ class Follow(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=("user", "author"),
+                fields=('user', 'author'),
                 name="unique_name_of_users")
         ]

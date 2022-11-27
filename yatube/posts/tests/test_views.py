@@ -2,10 +2,12 @@ from http import HTTPStatus
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.shortcuts import get_object_or_404
 from django.test import Client, TestCase
 from django.urls import reverse
-from posts.models import Comment, Group, Post
+
+from posts.models import Comment, Follow, Group, Post
 
 User = get_user_model()
 
@@ -14,6 +16,19 @@ class PostsViewsTests(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls.small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        cls.uploaded = SimpleUploadedFile(
+            name='small.gif',
+            content=cls.small_gif,
+            content_type='image/gif'
+        )
         cls.user = User.objects.create_user(username='Тестовый пользователь1')
         cls.user2 = User.objects.create_user(username='Тестовый пользователь2')
         cls.group = Group.objects.create(
@@ -26,6 +41,7 @@ class PostsViewsTests(TestCase):
             text='Тест!',
             author=cls.user,
             group=cls.group,
+            image=cls.uploaded,
         )
         cls.index = ('posts:index', None)
         cls.group_page = ('posts:group_list', ['test-slug'])
@@ -137,6 +153,7 @@ class PostsViewsTests(TestCase):
         form_fields = {
             'text': forms.fields.CharField,
             'group': forms.fields.ChoiceField,
+            'image': forms.fields.ImageField,
         }
 
         for value, expected in form_fields.items():
@@ -201,53 +218,6 @@ class PostsViewsTests(TestCase):
         )
         self.assertEqual(len(response.context['page_obj']), 0)
 
-
-class PostsPaginatorViewsTests(TestCase):
-    count_range = 13
-
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.user = User.objects.create_user(username='Тестовый пользователь')
-        cls.authorized_client = Client()
-        cls.authorized_client.force_login(cls.user)
-        cls.post_list = Post.objects.filter(
-            author__following__user=cls.user
-        ).all()
-        for count in range(cls.count_range):
-            cls.post = Post.objects.create(
-                text=f'Тестовый текст поста номер {count}',
-                author=cls.user,
-            )
-        cls.index = ('posts:index', None)
-        cls.group_page = ('posts:group_list', ['test-slug'])
-        cls.profile = ('posts: profile', [cls.user])
-
-    def test_post_not_appears_wrong_group(self) -> None:
-        '''При создании пост не появляется в не предназначенной
-        для него группе'''
-        group_two = Group.objects.create(
-            title='Тестовая группа №2',
-            slug='test-slug-two',
-        )
-        Post.objects.create(
-            text='Тестовый пост №2',
-            author=self.user,
-            group=group_two,
-        )
-        response = self.authorized_client.get(
-            reverse('posts:group_list', args=[group_two.slug])
-        )
-        first_object = response.context['page_obj'][0]
-        self.assertNotEqual(first_object, self.post)
-
-    def test_posts_if_second_page_has_three_records(self):
-        """Проверка, содержит ли вторая страница 3 записи."""
-        response = self.authorized_client.get(
-            reverse(*self.index) + '?page=2'
-        )
-        self.assertEqual(len(response.context.get('page_obj').object_list), 3)
-
     def test_add_comment_correct_context(self):
         """Проверка add_comment
         комментарий появляется на странице поста
@@ -257,7 +227,8 @@ class PostsPaginatorViewsTests(TestCase):
         form_data = {
             'post': self.post,
             'author': self.post.author,
-            'text': 'Тестовый текст комментария'
+            'text': 'Тестовый текст комментария',
+            'image': self.uploaded,
         }
 
         response = self.authorized_client.post(
@@ -276,34 +247,46 @@ class PostsPaginatorViewsTests(TestCase):
         self.assertEqual(last_comment.author, self.post.author)
         self.assertEqual(last_comment.text, 'Тестовый текст комментария')
 
-    def test_follow(self):
-        """Проверка авторизованный пользователь может
-        подписываться на других пользователей """
+    def test_profile_follow(self) -> None:
+        '''Авторизованный пользователь может подписываться
+            на других пользователей'''
+        posts = Post.objects.filter(author__following__user=self.user).all()
+        self.authorized_client.get(
+            reverse('posts:profile_unfollow', args=[self.user])
+        )
+        response = self.authorized_client.post('/follow/')
 
-        self.authorized_client.get(f'/profile/{self.user}/follow/')
-        response = self.authorized_client.get('/follow/')
+        for post in posts:
+            self.assertEqual(
+                response.context.get('post'),
+                post
+            )
 
-        for post in self.post_list:
-            self.assertEqual(response.context.get('post'), post)
-
-    def test_unfollow(self):
-        """Проверка авторизованный пользователь может
-        удалять других пользователей из подписок """
-
-        self.authorized_client.get(f'/profile/{self.user}/unfollow/')
-        response = self.authorized_client.get('/follow/')
-
-        for post in self.post_list:
-            self.assertEqual(response.context.get('post'), post)
+    def test_profile_unfollow(self) -> None:
+        '''Авторизованный пользователь может отписываться
+            от других пользователей'''
+        followers_count = Follow.objects.count()
+        response = self.authorized_client.post(
+            f'/profile/{self.user}/unfollow/', args=[self.user]
+        )
+        self.assertRedirects(
+            response, reverse('posts:profile', args=[self.user])
+        )
+        self.assertEqual(
+            Follow.objects.count(), followers_count
+        )
 
     def test_check_correct_followed(self):
         """Проверка Ленты постов авторов
         Новая запись пользователя появляется в ленте
         тех, кто на него подписан"""
 
+        post_list = Post.objects.filter(
+            author__following__user=self.user
+        ).all()
         response = self.authorized_client.get('/follow/')
 
-        for post in self.post_list:
+        for post in post_list:
             self.assertEqual(response.context.get('post'), post)
 
     def test_check_correct_unfollowed(self):
@@ -312,4 +295,74 @@ class PostsPaginatorViewsTests(TestCase):
 
         response = self.authorized_client.get('/follow/')
 
-        self.assertEqual(response.context.get('post'), None)
+        post_list = Post.objects.filter(
+            author__following__user=self.user
+        ).all()
+
+        for post in post_list:
+            self.assertEqual(response.context.get('page_obj'), post)
+
+
+class PostsPaginatorViewsTests(TestCase):
+    count_range = 13
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.user = User.objects.create_user(
+            username='Тестовый пользователь для пагинатора'
+        )
+        cls.small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        cls.uploaded = SimpleUploadedFile(
+            name='small.gif',
+            content=cls.small_gif,
+            content_type='image/gif'
+        )
+        for count in range(cls.count_range):
+            cls.post = Post.objects.create(
+                text=f'Тестовый текст поста номер {count}',
+                author=cls.user,
+                image=cls.uploaded,
+            )
+        cls.index = ('posts:index', None)
+        cls.group_page = ('posts:group_list', ['test-slug'])
+        cls.profile = ('posts: profile', [cls.user])
+
+    def setUp(self):
+        self.guest_client = Client()
+        self.authorized_client = Client()
+        self.authorized_client.force_login(self.user)
+
+    def test_post_not_appears_wrong_group(self) -> None:
+        '''При создании пост не появляется
+        в не предназначенной
+        для него группе.'''
+        group_two = Group.objects.create(
+            title='Тестовая группа №2',
+            slug='test-slug-two',
+        )
+        Post.objects.create(
+            text='Тестовый пост №2',
+            author=self.user,
+            group=group_two,
+            image=self.uploaded,
+        )
+        response = self.authorized_client.get(
+            reverse('posts:group_list', args=[group_two.slug])
+        )
+        first_object = response.context['page_obj'][0]
+        self.assertNotEqual(first_object, self.post)
+
+    def test_posts_if_second_page_has_three_records(self):
+        """Проверка, содержит ли вторая страница 3 записи."""
+        response = self.authorized_client.get(
+            reverse(*self.index) + '?page=2'
+        )
+        self.assertEqual(len(response.context.get('page_obj').object_list), 3)
