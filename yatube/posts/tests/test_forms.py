@@ -1,14 +1,21 @@
+import shutil
+import tempfile
+
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
+from django.conf import settings
 
 from posts.models import Comment, Group, Post, User
 
 User = get_user_model()
 
+TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 
+
+@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class PostsFormsTest(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -43,6 +50,11 @@ class PostsFormsTest(TestCase):
         self.authorized_client = Client()
         self.authorized_client.force_login(self.author)
         cache.clear()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def test_posts_forms_create_post(self):
         """Проверка, создает ли форма пост в базе."""
