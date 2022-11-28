@@ -2,12 +2,15 @@ from http import HTTPStatus
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.shortcuts import get_object_or_404
 from django.test import Client, TestCase
 from django.urls import reverse
 
 from posts.models import Comment, Follow, Group, Post
+
+from posts.utils import POST_PER_PAGE
 
 User = get_user_model()
 
@@ -30,7 +33,7 @@ class PostsViewsTests(TestCase):
             content_type='image/gif'
         )
         cls.user = User.objects.create_user(username='Тестовый пользователь1')
-        cls.user2 = User.objects.create_user(username='Тестовый пользователь2')
+        cls.user_valera = User.objects.create_user(username='Валера')
         cls.group = Group.objects.create(
             title='Тестовое название',
             slug='test-slug',
@@ -46,7 +49,7 @@ class PostsViewsTests(TestCase):
         cls.index = ('posts:index', None)
         cls.group_page = ('posts:group_list', ['test-slug'])
         cls.profile = ('posts:profile', [cls.user])
-        cls.profile2 = ('posts:profile', [cls.user2])
+        cls.profile_valera = ('posts:profile', [cls.user_valera])
         cls.detail = ('posts:post_detail', [cls.post.id])
         cls.create = ('posts:create_post', None)
         cls.edit = ('posts:post_edit', [cls.post.id])
@@ -55,8 +58,9 @@ class PostsViewsTests(TestCase):
         self.guest_client = Client()
         self.authorized_client = Client()
         self.authorized_client.force_login(self.user)
-        self.authorized_client2 = Client()
-        self.authorized_client2.force_login(self.user2)
+        self.authorized_client_valera = Client()
+        self.authorized_client_valera.force_login(self.user_valera)
+        cache.clear()
 
     def posts_check_all_fields(self, post):
         """Метод, проверяющий поля поста."""
@@ -187,41 +191,51 @@ class PostsViewsTests(TestCase):
         self.posts_check_all_fields(response.context['post'])
 
     def test_post_in_author_profile(self):
-        """Пост попадает в профиль к автору, который его написал"""
+        """Пост попадает в профиль к автору, который его написал."""
         template_address, argument = self.profile
+
         first_object = self.authorized_client.get(reverse(
             template_address, args=argument
         )
         ).context['page_obj'][0]
+
         self.assertEqual(first_object.author, self.user),
         self.assertEqual(first_object.text, self.post.text),
         self.assertEqual(first_object.group, self.group),
 
     def test_post_not_in_author_profile(self):
-        """Пост не попадает в профиль к автору, который его не написал;"""
-        template_address, argument = self.profile2
-        first_object = self.authorized_client2.get(reverse(
+        """Пост не попадает в профиль к автору, который его не написал."""
+        template_address, argument = self.profile_valera
+
+        first_object = self.authorized_client_valera.get(reverse(
             template_address, args=argument
         )
         ).context['page_obj'].object_list
+
         self.assertEqual(len(first_object), 0)
 
     def test_post_not_another_group(self):
-        """Созданный пост не попал в группу, для которой не был предназначен"""
+        """Созданный пост не попал в группу,
+
+        для которой не был предназначен."""
         another_group = Group.objects.create(
             title='Дополнительная тестовая группа',
             slug='test-another-slug',
             description='Тестовое описание дополнительной группы',
         )
+
         response = self.authorized_client.get(
             reverse('posts:group_list', kwargs={'slug': another_group.slug})
         )
+
         self.assertEqual(len(response.context['page_obj']), 0)
 
     def test_add_comment_correct_context(self):
         """Проверка add_comment
+
         комментарий появляется на странице поста
-        комментировать посты может только авторизованный пользователь
+        комментировать посты может только
+        авторизованный пользователь.
         """
         tasks_count = Post.objects.count()
         form_data = {
@@ -241,31 +255,19 @@ class PostsViewsTests(TestCase):
             response,
             reverse('posts:post_detail', args=[self.post.pk])
         )
-
         last_comment = get_object_or_404(Comment, post=self.post)
+
         self.assertEqual(last_comment.post, self.post)
         self.assertEqual(last_comment.author, self.post.author)
         self.assertEqual(last_comment.text, 'Тестовый текст комментария')
 
-    def test_profile_follow(self) -> None:
-        '''Авторизованный пользователь может подписываться
-            на других пользователей'''
-        posts = Post.objects.filter(author__following__user=self.user).all()
-        self.authorized_client.get(
-            reverse('posts:profile_unfollow', args=[self.user])
-        )
-        response = self.authorized_client.post('/follow/')
-
-        for post in posts:
-            self.assertEqual(
-                response.context.get('post'),
-                post
-            )
-
     def test_profile_unfollow(self) -> None:
-        '''Авторизованный пользователь может отписываться
-            от других пользователей'''
+        """Авторизованный пользователь может отписываться
+            от других пользователей."""
         followers_count = Follow.objects.count()
+        self.authorized_client.post(
+            f'/profile/{self.user}/follow/', args=[self.user]
+        )
         response = self.authorized_client.post(
             f'/profile/{self.user}/unfollow/', args=[self.user]
         )
@@ -276,35 +278,34 @@ class PostsViewsTests(TestCase):
             Follow.objects.count(), followers_count
         )
 
-    def test_check_correct_followed(self):
-        """Проверка Ленты постов авторов
-        Новая запись пользователя появляется в ленте
-        тех, кто на него подписан"""
+    def test_follow_index(self) -> None:
+        """Проверка, в ленте подписок посты
 
-        post_list = Post.objects.filter(
-            author__following__user=self.user
-        ).all()
-        response = self.authorized_client.get('/follow/')
+        избранных авторов правильно отображаются.
+        """
+        self.authorized_client.post(
+            reverse('posts:profile_follow', args=[self.user])
+        )
 
-        for post in post_list:
-            self.assertEqual(response.context.get('post'), post)
+        posts = Post.objects.all()
+
+        self.assertTrue(posts.exists())
 
     def test_check_correct_unfollowed(self):
         """Проверка Ленты постов авторов
-        В ленте подписок нет лишних постов"""
 
-        response = self.authorized_client.get('/follow/')
+        в ленте подписок нет постов.
+        """
 
         post_list = Post.objects.filter(
             author__following__user=self.user
         ).all()
 
-        for post in post_list:
-            self.assertEqual(response.context.get('page_obj'), post)
+        self.assertFalse(post_list.exists())
 
 
 class PostsPaginatorViewsTests(TestCase):
-    count_range = 13
+    count_range = POST_PER_PAGE + 3
 
     @classmethod
     def setUpClass(cls):
@@ -341,9 +342,9 @@ class PostsPaginatorViewsTests(TestCase):
         self.authorized_client.force_login(self.user)
 
     def test_post_not_appears_wrong_group(self) -> None:
-        '''При создании пост не появляется
+        """При создании пост не появляется
         в не предназначенной
-        для него группе.'''
+        для него группе."""
         group_two = Group.objects.create(
             title='Тестовая группа №2',
             slug='test-slug-two',

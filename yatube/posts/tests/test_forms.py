@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.cache import cache
 from django.test import Client, TestCase
 from django.urls import reverse
 
@@ -41,6 +42,7 @@ class PostsFormsTest(TestCase):
         self.guest_client = Client()
         self.authorized_client = Client()
         self.authorized_client.force_login(self.author)
+        cache.clear()
 
     def test_posts_forms_create_post(self):
         """Проверка, создает ли форма пост в базе."""
@@ -87,6 +89,7 @@ class PostsFormsTest(TestCase):
         """Проверка, не авторизованный
         пользователь не может создать пост."""
         post_count = Post.objects.count()
+
         form_data = {
             'text': 'Тестовый пост формы',
             'author': self.author.id,
@@ -96,17 +99,14 @@ class PostsFormsTest(TestCase):
             reverse('posts:create_post'),
             data=form_data,
         )
+
         self.assertEqual(Post.objects.count(), post_count)
 
     def test_add_comment(self) -> None:
-        '''Проверка формы комментария'''
-        self.comment = Comment.objects.create(
-            text='Тестовый комментарий',
-            post=self.post,
-            author=self.author
-        )
+        """Проверка формы комментария."""
         self.comments_count = Comment.objects.count()
         one_more_comment = 1
+
         form_data = {
             'text': 'Тестовый комментарий'
         }
@@ -115,9 +115,11 @@ class PostsFormsTest(TestCase):
             data=form_data,
             follow=True,
         )
+
         self.assertRedirects(
             response, reverse('posts:post_detail', args=[self.post.pk])
         )
         self.assertEqual(
             Comment.objects.count(), self.comments_count + one_more_comment
         )
+        self.assertIsInstance(Comment.objects.all()[0], Comment)

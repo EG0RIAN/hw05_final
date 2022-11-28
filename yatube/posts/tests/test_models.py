@@ -13,12 +13,12 @@ class GroupModelsTest(TestCase):
         cls.group = Group.objects.create(title='Тестовая группа')
 
     def test_group_str_title(self):
-        """Совпадает ли group.title"""
+        """Совпадает ли group.title."""
         group = GroupModelsTest.group
         self.assertEqual(str(group), group.title)
 
     def test_group_verbose_name(self):
-        """Совпадают ли title и description"""
+        """Совпадают ли title и description."""
         group = GroupModelsTest.group
         field_verboses = {
             'title': 'Заголовок',
@@ -44,7 +44,7 @@ class PostModelsTest(TestCase):
         )
 
     def test_post_str_text(self):
-        """Ыыводятся ли только первые пятнадцать символов поста."""
+        """Выводятся ли только первые пятнадцать символов поста."""
         post = PostModelsTest.post
         text = post.text
         self.assertEqual(str(post), text[:15])

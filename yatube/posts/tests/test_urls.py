@@ -64,13 +64,13 @@ class PostsUrlsTests(TestCase):
                 self.assertEqual(response.status_code, HTTPStatus.OK)
 
     def test_unexisting_page(self):
-        """Проверка несуществующих страниц"""
+        """Проверка несуществующих страниц."""
         response = self.guest_client.get('/unexisting_page/')
         self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
 
     def test_urls_auth_user_private(self):
         """
-        Проверка на доступнотсь ссылок авторизованному пользователю
+        Проверка на доступнотсь ссылок авторизованному пользователю.
         """
         url_names = [
             self.index,

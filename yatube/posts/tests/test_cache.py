@@ -20,11 +20,13 @@ class PostCacheTests(TestCase):
         """Проверка хранения и очищения кэша для index."""
         response = self.authorized_client.get(reverse(self.index))
         posts = response.content
+
         Post.objects.create(
             text='test_new_post',
             author=self.user,
         )
         response_cached = self.authorized_client.get(reverse(self.index))
+
         old_posts = response_cached.content
         self.assertEqual(old_posts, posts)
         cache.clear()
