@@ -134,4 +134,4 @@ class PostsFormsTest(TestCase):
         self.assertEqual(
             Comment.objects.count(), self.comments_count + one_more_comment
         )
-        self.assertIsInstance(Comment.objects.all()[0], Comment)
+        self.assertIsInstance(response.context['comments'][0], Comment)
