@@ -32,8 +32,10 @@ class PostsViewsTests(TestCase):
             content=cls.small_gif,
             content_type='image/gif'
         )
-        cls.user = User.objects.create_user(username='Тестовый пользователь1')
-        cls.user_valera = User.objects.create_user(username='Валера')
+        cls.user = User.objects.create_user(username='Тестовый пользователь')
+        cls.user_another = User.objects.create_user(
+            username='Другой тестовый пользователь'
+        )
         cls.group = Group.objects.create(
             title='Тестовое название',
             slug='test-slug',
@@ -49,7 +51,7 @@ class PostsViewsTests(TestCase):
         cls.index = ('posts:index', None)
         cls.group_page = ('posts:group_list', ['test-slug'])
         cls.profile = ('posts:profile', [cls.user])
-        cls.profile_valera = ('posts:profile', [cls.user_valera])
+        cls.profile_another = ('posts:profile', [cls.user_another])
         cls.detail = ('posts:post_detail', [cls.post.id])
         cls.create = ('posts:create_post', None)
         cls.edit = ('posts:post_edit', [cls.post.id])
@@ -58,8 +60,8 @@ class PostsViewsTests(TestCase):
         self.guest_client = Client()
         self.authorized_client = Client()
         self.authorized_client.force_login(self.user)
-        self.authorized_client_valera = Client()
-        self.authorized_client_valera.force_login(self.user_valera)
+        self.authorized_client_another = Client()
+        self.authorized_client_another.force_login(self.user_another)
         cache.clear()
 
     def posts_check_all_fields(self, post):
@@ -205,9 +207,9 @@ class PostsViewsTests(TestCase):
 
     def test_post_not_in_author_profile(self):
         """Пост не попадает в профиль к автору, который его не написал."""
-        template_address, argument = self.profile_valera
+        template_address, argument = self.profile_another
 
-        first_object = self.authorized_client_valera.get(reverse(
+        first_object = self.authorized_client_another.get(reverse(
             template_address, args=argument
         )
         ).context['page_obj'].object_list
@@ -266,10 +268,10 @@ class PostsViewsTests(TestCase):
             от других пользователей."""
         followers_count = Follow.objects.count()
         self.authorized_client.post(
-            f'/profile/{self.user}/follow/', args=[self.user]
+            reverse('posts:profile_follow', args=[self.user])
         )
         response = self.authorized_client.post(
-            f'/profile/{self.user}/unfollow/', args=[self.user]
+            reverse('posts:profile_unfollow', args=[self.user])
         )
         self.assertRedirects(
             response, reverse('posts:profile', args=[self.user])
@@ -283,7 +285,7 @@ class PostsViewsTests(TestCase):
 
         избранных авторов правильно отображаются.
         """
-        self.authorized_client.post(
+        self.create.post(
             reverse('posts:profile_follow', args=[self.user])
         )
 
