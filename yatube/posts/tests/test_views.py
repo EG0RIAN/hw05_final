@@ -276,34 +276,25 @@ class PostsViewsTests(TestCase):
         self.assertRedirects(
             response, reverse('posts:profile', args=[self.user])
         )
+        self.assertFalse(Follow.objects.all().exists())
         self.assertEqual(
             Follow.objects.count(), followers_count
         )
 
-    def test_follow_index(self) -> None:
-        """Проверка, в ленте подписок посты
-
-        избранных авторов правильно отображаются.
-        """
-        self.create.post(
+    def test_profile_follow(self) -> None:
+        """Авторизованный пользователь может подписываться
+            на других пользователей."""
+        followers_count = Follow.objects.count()
+        one_more_follower = 1
+        response = self.authorized_client_another.post(
             reverse('posts:profile_follow', args=[self.user])
         )
-
-        posts = Post.objects.all()
-
-        self.assertTrue(posts.exists())
-
-    def test_check_correct_unfollowed(self):
-        """Проверка Ленты постов авторов
-
-        в ленте подписок нет постов.
-        """
-
-        post_list = Post.objects.filter(
-            author__following__user=self.user
-        ).all()
-
-        self.assertFalse(post_list.exists())
+        self.assertRedirects(
+            response, reverse('posts:profile', args=[self.user])
+        )
+        self.assertEqual(
+            Follow.objects.count(), followers_count + one_more_follower
+        )
 
 
 class PostsPaginatorViewsTests(TestCase):
