@@ -2,13 +2,13 @@ import shutil
 import tempfile
 from http import HTTPStatus
 
-from django.conf import settings
 from django import forms
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.shortcuts import get_object_or_404
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from posts.models import Comment, Follow, Group, Post
@@ -19,6 +19,7 @@ User = get_user_model()
 TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 
 
+@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class PostsViewsTests(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -62,9 +63,8 @@ class PostsViewsTests(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        super().tearDownClass()
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
-        cache.clear()
+        super().tearDownClass()
 
     def setUp(self):
         self.guest_client = Client()
@@ -72,6 +72,7 @@ class PostsViewsTests(TestCase):
         self.authorized_client.force_login(self.user)
         self.authorized_client_not_author = Client()
         self.authorized_client_not_author.force_login(self.not_author)
+        cache.clear()
 
     def posts_check_all_fields(self, post):
         """Метод, проверяющий поля поста."""
@@ -82,7 +83,7 @@ class PostsViewsTests(TestCase):
 
     def test_posts_pages_use_correct_template(self):
         """Проверка, использует ли адрес URL соответствующий шаблон."""
-        cache.clear()
+
         templates_pages_names = (
             (
                 'posts/index.html',
@@ -128,7 +129,7 @@ class PostsViewsTests(TestCase):
         правильным контекстом.
         Появляется ли пост, при создании на странице его группы.
         """
-        cache.clear()
+
         template_address, argument = self.group_page
         response = self.authorized_client.get(
             reverse(template_address, args=argument)
@@ -136,14 +137,13 @@ class PostsViewsTests(TestCase):
         test_group = response.context['group']
         self.posts_check_all_fields(response.context['page_obj'][0])
         self.assertEqual(test_group, self.group)
-        cache.clear()
 
     def test_posts_context_post_create_template(self):
         """
         Проверка, сформирован ли шаблон post_create с
         правильным контекстом.
         """
-        cache.clear()
+
         template_address, argument = self.create
         response = self.authorized_client.get(reverse(
             template_address, args=argument)
@@ -164,6 +164,7 @@ class PostsViewsTests(TestCase):
         Проверка, сформирован ли шаблон post_edit с
         правильным контекстом.
         """
+
         cache.clear()
         template_address, argument = self.edit
         response = self.authorized_client.get(
@@ -186,7 +187,7 @@ class PostsViewsTests(TestCase):
         Проверка, сформирован ли шаблон profile с
         правильным контекстом.
         """
-        cache.clear()
+
         template_address, argument = self.profile
         response = self.authorized_client.get(
             reverse(template_address, args=argument)
@@ -201,7 +202,7 @@ class PostsViewsTests(TestCase):
         Проверка, сформирован ли шаблон post_detail с
         правильным контекстом.
         """
-        cache.clear()
+
         template_address, argument = self.detail
         response = self.authorized_client.get(
             reverse(template_address, args=argument)
@@ -210,7 +211,7 @@ class PostsViewsTests(TestCase):
 
     def test_post_in_author_profile(self):
         """Пост попадает в профиль к автору, который его написал."""
-        
+
         template_address, argument = self.profile
 
         first_object = self.authorized_client.get(reverse(
@@ -256,6 +257,7 @@ class PostsViewsTests(TestCase):
         комментировать посты может только
         авторизованный пользователь.
         """
+
         cache.clear()
         tasks_count = Post.objects.count()
         form_data = {
@@ -280,15 +282,14 @@ class PostsViewsTests(TestCase):
         self.assertEqual(last_comment.post, self.post)
         self.assertEqual(last_comment.author, self.post.author)
         self.assertEqual(last_comment.text, 'Тестовый текст комментария')
+        cache.clear()
 
-    def test_profile_unfollow(self) -> None:
+    def test_profile_unfollow(self):
         """Авторизованный пользователь может отписываться
             от других пользователей."""
         followers_count = Follow.objects.count()
-        self.authorized_client.post(
-            reverse('posts:profile_follow', args=[self.user])
-        )
-        response = self.authorized_client.post(
+        Follow.objects.create(user=self.not_author, author=self.user)
+        response = self.authorized_client_not_author.post(
             reverse('posts:profile_unfollow', args=[self.user])
         )
         self.assertRedirects(
@@ -299,9 +300,12 @@ class PostsViewsTests(TestCase):
             Follow.objects.count(), followers_count
         )
 
-    def test_profile_follow(self) -> None:
-        """Авторизованный пользователь может подписываться
-            на других пользователей."""
+    def test_profile_follow(self):
+        """
+        Авторизованный пользователь может подписываться
+
+        на других пользователей.
+        """
         followers_count = Follow.objects.count()
         one_more_follower = 1
         response = self.authorized_client_not_author.post(
@@ -312,6 +316,10 @@ class PostsViewsTests(TestCase):
         )
         self.assertEqual(
             Follow.objects.count(), followers_count + one_more_follower
+        )
+        self.assertTrue(Follow.objects.filter(
+            author=self.user,
+            user=self.not_author).exists()
         )
 
 
@@ -351,11 +359,13 @@ class PostsPaginatorViewsTests(TestCase):
         self.guest_client = Client()
         self.authorized_client = Client()
         self.authorized_client.force_login(self.user)
+        cache.clear()
 
     def test_post_not_appears_wrong_group(self) -> None:
         """При создании пост не появляется
         в не предназначенной
         для него группе."""
+
         cache.clear()
         group_two = Group.objects.create(
             title='Тестовая группа №2',
@@ -379,3 +389,19 @@ class PostsPaginatorViewsTests(TestCase):
             reverse(*self.index) + '?page=2'
         )
         self.assertEqual(len(response.context.get('page_obj').object_list), 3)
+
+    def test_cache_index_page(self):
+        """Проверка работы кеша"""
+        post = Post.objects.create(
+            text='Пост под кеш',
+            author=self.user)
+        content_add = self.authorized_client.get(
+            reverse('posts:index')).content
+        post.delete()
+        content_delete = self.authorized_client.get(
+            reverse('posts:index')).content
+        self.assertEqual(content_add, content_delete)
+        cache.clear()
+        content_cache_clear = self.authorized_client.get(
+            reverse('posts:index')).content
+        self.assertNotEqual(content_add, content_cache_clear)

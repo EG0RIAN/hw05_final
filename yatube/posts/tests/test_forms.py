@@ -1,12 +1,12 @@
 import shutil
 import tempfile
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
-from django.conf import settings
 
 from posts.models import Comment, Group, Post, User
 
@@ -17,6 +17,12 @@ TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 
 @override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class PostsFormsTest(TestCase):
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
+        cache.clear()
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -53,8 +59,8 @@ class PostsFormsTest(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        super().tearDownClass()
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
+        super().tearDownClass()
 
     def test_posts_forms_create_post(self):
         """Проверка, создает ли форма пост в базе."""
@@ -134,4 +140,9 @@ class PostsFormsTest(TestCase):
         self.assertEqual(
             Comment.objects.count(), self.comments_count + one_more_comment
         )
-        self.assertIsInstance(response.context['comments'][0], Comment)
+        self.assertTrue(Comment.objects.filter(
+            author=self.author,
+            post=self.post.pk,
+            text=form_data['text']
+        ).exists()
+        )
