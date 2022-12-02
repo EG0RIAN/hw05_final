@@ -61,11 +61,6 @@ class PostsViewsTests(TestCase):
         cls.create = ('posts:create_post', None)
         cls.edit = ('posts:post_edit', [cls.post.id])
 
-    @classmethod
-    def tearDownClass(cls):
-        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
-        super().tearDownClass()
-
     def setUp(self):
         self.guest_client = Client()
         self.authorized_client = Client()
@@ -73,6 +68,11 @@ class PostsViewsTests(TestCase):
         self.authorized_client_not_author = Client()
         self.authorized_client_not_author.force_login(self.not_author)
         cache.clear()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def posts_check_all_fields(self, post):
         """Метод, проверяющий поля поста."""
