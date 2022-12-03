@@ -19,9 +19,8 @@ TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 class PostsFormsTest(TestCase):
     @classmethod
     def tearDownClass(cls):
-        super().tearDownClass()
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
-        cache.clear()
+        super().tearDownClass()
 
     @classmethod
     def setUpClass(cls):
@@ -143,6 +142,5 @@ class PostsFormsTest(TestCase):
         self.assertTrue(Comment.objects.filter(
             author=self.author,
             post=self.post.pk,
-            text=form_data['text']
-        ).exists()
+            text=form_data['text']).exists()
         )

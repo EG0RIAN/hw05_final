@@ -23,6 +23,7 @@ TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 class PostsViewsTests(TestCase):
     @classmethod
     def setUpClass(cls):
+        cache.clear()
         super().setUpClass()
         cls.small_gif = (
             b'\x47\x49\x46\x38\x39\x61\x02\x00'
@@ -71,8 +72,11 @@ class PostsViewsTests(TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        shutil.rmtree(settings.MEDIA_ROOT, ignore_errors=True)
         super().tearDownClass()
-        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
+
+    def tearDown(self) -> None:
+        cache.clear()
 
     def posts_check_all_fields(self, post):
         """Метод, проверяющий поля поста."""
@@ -258,7 +262,6 @@ class PostsViewsTests(TestCase):
         авторизованный пользователь.
         """
 
-        cache.clear()
         tasks_count = Post.objects.count()
         form_data = {
             'post': self.post,
@@ -271,6 +274,7 @@ class PostsViewsTests(TestCase):
             reverse('posts:add_comment', args=[self.post.pk]),
             data=form_data
         )
+        self.uploaded.close
 
         self.assertEqual(Post.objects.count(), tasks_count)
         self.assertRedirects(
@@ -323,11 +327,13 @@ class PostsViewsTests(TestCase):
         )
 
 
+@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class PostsPaginatorViewsTests(TestCase):
     count_range = POST_PER_PAGE + 3
 
     @classmethod
     def setUpClass(cls):
+        cache.clear()
         super().setUpClass()
         cls.user = User.objects.create_user(
             username='Тестовый пользователь для пагинатора'
@@ -360,6 +366,11 @@ class PostsPaginatorViewsTests(TestCase):
         self.authorized_client = Client()
         self.authorized_client.force_login(self.user)
         cache.clear()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(settings.MEDIA_ROOT, ignore_errors=True)
+        super().tearDownClass()
 
     def test_post_not_appears_wrong_group(self) -> None:
         """При создании пост не появляется
